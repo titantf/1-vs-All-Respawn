@@ -21,7 +21,8 @@ Adds a respawn feature to boss gamemodes like Deathrun, VSH and Freak Fortress, 
   - Default: 10 seconds
 
 - **sm_1vA_preparetime**
-  - Show 'Prepare to Respawn' message when timer reaches this amount of secondsDefault: 10
+  - Show 'Prepare to Respawn' message when timer reaches this amount of seconds
+  - Default: 10
 
 - **sm_1vA_leaderboards**
   - Display the next respawns [0 = no, 1 = yes]

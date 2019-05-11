@@ -4,7 +4,7 @@ Adds a respawn feature to boss gamemodes like Deathrun, VSH and Freak Fortress, 
 
 ### Requirements
 ---
-- MoreColors - For setting the chat tag
+- MoreColors (only required for recompile) - For setting the chat tag
 
 ### ConVars
 ---

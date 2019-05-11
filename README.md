@@ -25,7 +25,8 @@ Adds a respawn feature to boss gamemodes like Deathrun, VSH and Freak Fortress, 
   - Default: 10
 
 - **sm_1vA_leaderboards**
-  - Display the next respawns [0 = no, 1 = yes]
+  - Display the next respawns
+  - 0 = No; 1 = Yes
   - Default: 1
 
 - **sm_1vA_leaderboards_hud_x**

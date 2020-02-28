@@ -2,9 +2,12 @@
 #include <tf2>
 #include <morecolors>
 
+#pragma dynamic 131072 
+
 ConVar
 	cvTag,
 	cvRespawn,
+	cvRespawnPerPlayer,
 	cvIntro,
 	cvWarn,
 	cvLeaderboards,
@@ -13,11 +16,16 @@ ConVar
 	cvLeaderboardsHudx,
 	cvLeaderboardsHudy;
 	
+bool
+	g_bRoundStarted = false;
+	
 int
 	g_iWarnTime = 0,
 	g_iIntroTime = 0,
 	g_iRespawnTime = 0,
+	g_iRespawnTimePerPlayer = 0,
 	g_iLeaderboards = 0,
+	g_iStartingPlayers = 0,
 	g_iRemaining[MAXPLAYERS+1] = 0;
 	
 float
@@ -30,26 +38,29 @@ char
 	g_sTag[32];
 	
 Handle
-	g_hRespawnTimer[MAXPLAYERS+1],
-	g_hRespawnHud_Timer[MAXPLAYERS + 1] = { INVALID_HANDLE, ... },
+	g_hRespawnTimer[MAXPLAYERS+1] = { null, ... },
+	g_hRespawnHud_Timer[MAXPLAYERS + 1] = { null, ... },
 	g_hRespawnHUD,
 	g_hRespawnLeaderboards;
 	
 public Plugin myinfo = 
 {
-	name 			= 	"Titan.TF - 1 vs All Respawn",
+	name 			= 	"Titan 2 - 1 vs All Respawn",
 	description 	= 	"Adds a respawn feature to boss gamemodes like Deathrun, VSH and Freak Fortress, aka a second life.",
 	author 			= 	"myst",
-	version 		= 	"1.0",
+	version 		= 	"2.0",
 }
 
 public void OnPluginStart()
 {
-	cvTag = CreateConVar("sm_1vA_tag", "{grey}[VSH] {white}", "Change the chat tag of the plugin");
+	cvTag = CreateConVar("sm_1vA_tag", "{grey}[VSH]{white}", "Change the chat tag of the plugin");
 	cvTag.GetString(g_sTag, sizeof(g_sTag));
 	
-	cvRespawn = CreateConVar("sm_1vA_respawntime", "300", "Change the respawn time (in seconds)");
+	cvRespawn = CreateConVar("sm_1vA_respawntime", "20", "Change the base respawn time (in seconds)");
 	g_iRespawnTime = cvRespawn.IntValue;
+	
+	cvRespawnPerPlayer = CreateConVar("sm_1vA_respawnperplayertime", "15", "Change the additional respawn time added per player (in seconds)");
+	g_iRespawnTimePerPlayer = cvRespawnPerPlayer.IntValue;
 	
 	cvIntro = CreateConVar("sm_1vA_introtime", "10", "The first x seconds that shows you will respawn in y minutes z seconds before timer starts animating");
 	g_iIntroTime = cvIntro.IntValue;
@@ -60,20 +71,21 @@ public void OnPluginStart()
 	cvLeaderboards = CreateConVar("sm_1vA_leaderboards", "1", "Display the next respawns (0 = no, 1 = yes, default: 1)", _, true, -1.0, true, 1.0);
 	g_iLeaderboards = cvLeaderboards.IntValue;
 	
-	cvRespawnHudx = CreateConVar("sm_1vA_leaderboards_hud_x", "0.01", "Change the x position of leaderboards hud", _, true, -1.0, true, 1.0);
+	cvRespawnHudx = CreateConVar("sm_1vA_leaderboards_hud_x", "-1.0", "Change the x position of leaderboards hud", _, true, -1.0, true, 1.0);
 	g_flRespawnHudx = cvRespawnHudx.FloatValue;
 	
-	cvRespawnHudy = CreateConVar("sm_1vA_leaderboards_hud_y", "0.01", "Change the y position of leaderboards hud", _, true, -1.0, true, 1.0);
+	cvRespawnHudy = CreateConVar("sm_1vA_leaderboards_hud_y", "-1.0", "Change the y position of leaderboards hud", _, true, -1.0, true, 1.0);
 	g_flRespawnHudy = cvRespawnHudy.FloatValue;
 	
-	cvLeaderboardsHudx = CreateConVar("sm_1vA_respawn_hud_x", "-1.0", "Change the x position of respawn hud", _, true, -1.0, true, 1.0);
+	cvLeaderboardsHudx = CreateConVar("sm_1vA_respawn_hud_x", "0.01", "Change the x position of respawn hud", _, true, -1.0, true, 1.0);
 	g_flLeaderboardsHudx = cvLeaderboardsHudx.FloatValue;
 	
-	cvLeaderboardsHudy = CreateConVar("sm_1vA_respawn_hud_y", "-1.0", "Change the y position of respawn hud", _, true, -1.0, true, 1.0);
+	cvLeaderboardsHudy = CreateConVar("sm_1vA_respawn_hud_y", "0.01", "Change the y position of respawn hud", _, true, -1.0, true, 1.0);
 	g_flLeaderboardsHudy = cvLeaderboardsHudy.FloatValue;
 	
 	cvTag.AddChangeHook(OnCvarChanged);
 	cvRespawn.AddChangeHook(OnCvarChanged);
+	cvRespawnPerPlayer.AddChangeHook(OnCvarChanged);
 	cvIntro.AddChangeHook(OnCvarChanged);
 	cvWarn.AddChangeHook(OnCvarChanged);
 	cvLeaderboards.AddChangeHook(OnCvarChanged);
@@ -102,6 +114,9 @@ public int OnCvarChanged(ConVar cvar, const char[] oldValue, const char[] newVal
 	else if (cvar == cvRespawn)
 		g_iRespawnTime = cvRespawn.IntValue;
 		
+	else if (cvar == cvRespawnPerPlayer)
+		g_iRespawnTimePerPlayer = cvRespawnPerPlayer.IntValue;
+		
 	else if (cvar == cvIntro)
 		g_iIntroTime = cvIntro.IntValue;	
 		
@@ -128,32 +143,33 @@ public void OnMapStart() {
 	CreateTimer(1.0, Timer_Leaderboards, _, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
 }
 
-public void OnClientDisconnect(int iClient) {
-	Client_ClearTimers(iClient);
+public void OnClientDisconnect(int iClient)
+{
+	if (IsValidClient(iClient) && !IsFakeClient(iClient))
+		Client_ClearTimers(iClient);
 }
 
 public Action Player_Spawn(Handle hEvent, char[] sEventName, bool bDontBroadcast)
 {
 	int iClient = GetClientOfUserId(GetEventInt(hEvent, "userid"));
-	Client_ClearTimers(iClient);
-	
+	if (IsValidClient(iClient))
+		Client_ClearTimers(iClient);
+		
 	return Plugin_Continue;
 }
 
 public Action Player_Death(Handle hEvent, char[] sEventName, bool bDontBroadcast)
 {
-	int iClient = GetClientOfUserId(GetEventInt(hEvent, "userid"));
-	
-	int iFlags = GetEventInt(hEvent, "death_flags");
-	if (iFlags & 32)
-		return Plugin_Handled;
-		
-	else
+	if (g_bRoundStarted)
 	{
-		g_iRemaining[iClient] = g_iRespawnTime;
-		g_hRespawnTimer[iClient] = CreateTimer(view_as<float>(g_iRespawnTime), Timer_Respawn, iClient);
-		
-		g_hRespawnHud_Timer[iClient] = CreateTimer(1.0, Timer_RespawnHUD, iClient, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+		int iClient = GetClientOfUserId(GetEventInt(hEvent, "userid"));
+		if (IsValidClient(iClient) && !IsFakeClient(iClient))
+		{
+			g_iRemaining[iClient] = GetRespawnTime();
+			PrintToServer("%i", GetRespawnTime());
+			g_hRespawnTimer[iClient] = CreateTimer(float(GetRespawnTime()), Timer_Respawn, iClient);
+			g_hRespawnHud_Timer[iClient] = CreateTimer(1.0, Timer_RespawnHUD, iClient, TIMER_REPEAT|TIMER_FLAG_NO_MAPCHANGE);
+		}
 	}
 	
 	return Plugin_Continue;
@@ -162,19 +178,22 @@ public Action Player_Death(Handle hEvent, char[] sEventName, bool bDontBroadcast
 public Action Timer_RespawnHUD(Handle hTimer, int iClient)
 {
 	if (!IsValidClient(iClient))
-		return;
+		return Plugin_Stop;
 		
-	if (IsPlayerAlive(iClient))
+	if (!g_bRoundStarted)
 	{
 		Client_ClearTimers(iClient);
-		return;
+		return Plugin_Stop;
 	}
 	
 	g_iRemaining[iClient]--;
-	if (g_iRemaining[iClient] >= g_iRespawnTime - g_iIntroTime)
+	if (g_iRemaining[iClient] >= GetRespawnTime() - g_iIntroTime)
 	{
 		SetHudTextParams(g_flRespawnHudx, g_flRespawnHudy, 1.0, 255, 255, 255, 255);
-		ShowSyncHudText(iClient, g_hRespawnHUD, "You will respawn in %02d minutes %02d seconds.", g_iRespawnTime / 60, g_iRespawnTime % 60);
+		if (GetRespawnTime() / 60 > 0)
+			ShowSyncHudText(iClient, g_hRespawnHUD, "You will respawn in %d minutes %d seconds.", GetRespawnTime() / 60, GetRespawnTime() % 60);
+		else
+			ShowSyncHudText(iClient, g_hRespawnHUD, "You will respawn in %d seconds.", GetRespawnTime() / 60, GetRespawnTime() % 60);
 	}
 	
 	else if (g_iRemaining[iClient] <= 0)
@@ -182,8 +201,8 @@ public Action Timer_RespawnHUD(Handle hTimer, int iClient)
 		SetHudTextParams(g_flRespawnHudx, g_flRespawnHudy, 3.0, 255, 255, 255, 255);
 		ShowSyncHudText(iClient, g_hRespawnHUD, "You have respawned.");
 		
-		hTimer = INVALID_HANDLE;
-		return;
+		hTimer = null;
+		return Plugin_Stop;
 	}
 	
 	else if (g_iRemaining[iClient] <= g_iWarnTime)
@@ -197,6 +216,8 @@ public Action Timer_RespawnHUD(Handle hTimer, int iClient)
 		SetHudTextParams(g_flRespawnHudx, g_flRespawnHudy, 1.1, 255, 255, 255, 255);
 		ShowSyncHudText(iClient, g_hRespawnHUD, "Respawning in %02d:%02d", g_iRemaining[iClient] / 60, g_iRemaining[iClient] % 60);
 	}
+	
+	return Plugin_Handled;
 }
 
 public Action Timer_Leaderboards(Handle hTimer)
@@ -255,14 +276,19 @@ public Action Timer_Leaderboards(Handle hTimer)
 			}
 		}
 	}
+	
+	return Plugin_Handled;
 }
 
 public Action Timer_Respawn(Handle hTimer, int iClient)
 {
-	if (IsPlayerAlive(iClient))
+	if (!IsValidClient(iClient))
+		return Plugin_Stop;
+		
+	if (!g_bRoundStarted)
 	{
 		Client_ClearTimers(iClient);
-		return;
+		return Plugin_Stop;
 	}
 	
 	TF2_RespawnPlayer(iClient);
@@ -272,32 +298,30 @@ public Action Timer_Respawn(Handle hTimer, int iClient)
 	ShowSyncHudText(iClient, g_hRespawnHUD, "You have respawned.");
 	
 	Client_ClearTimers(iClient);
+	return Plugin_Handled;
 }
 
 public Action Event_RoundStart(Handle hEvent, char[] sEventName, bool bDontBroadcast)
 {
-	CPrintToChatAll("%s You will respawn after %02d minutes %02d seconds upon death.", g_sTag, g_iRespawnTime / 60, g_iRespawnTime % 60);
-	for (int iClient = 1; iClient <= MaxClients; iClient++) {
-		Client_ClearTimers(iClient);
-	}
+	g_iStartingPlayers = GetPlayersCount(2);
+	g_bRoundStarted = true;
+	
+	if (GetRespawnTime() / 60 > 0)
+		CPrintToChatAll("%s Players will respawn after %d minutes %d seconds upon death this round.", g_sTag, GetRespawnTime() / 60, GetRespawnTime() % 60);
+	else
+		CPrintToChatAll("%s Players will respawn after %d seconds upon death this round.", g_sTag, GetRespawnTime() % 60);
+		
+	for (int iClient = 1; iClient <= MaxClients; iClient++)
+		if (IsValidClient(iClient))
+			Client_ClearTimers(iClient);
 }
 
 public Action Event_RoundEnd(Handle hEvent, char[] sEventName, bool bDontBroadcast)
 {
+	g_bRoundStarted = false;
 	for (int iClient = 1; iClient <= MaxClients; iClient++)
-	{
-		if (g_hRespawnTimer[iClient] != INVALID_HANDLE)
-		{
-			KillTimer(g_hRespawnTimer[iClient]);
-			g_hRespawnTimer[iClient] = INVALID_HANDLE;
-		}
-		
-		if (g_hRespawnHud_Timer[iClient] != INVALID_HANDLE)
-		{
-			KillTimer(g_hRespawnHud_Timer[iClient]);
-			g_hRespawnHud_Timer[iClient] = INVALID_HANDLE;
-		}
-	}
+		if (IsValidClient(iClient))
+			Client_ClearTimers(iClient);
 }
 
 stock int GetPlayersCount(int iTeam) 
@@ -310,21 +334,23 @@ stock int GetPlayersCount(int iTeam)
 	return iCount; 
 }  
 
+stock int GetRespawnTime()
+{
+	return g_iRespawnTime + (g_iStartingPlayers * g_iRespawnTimePerPlayer)
+}
+
 public void Client_ClearTimers(int iClient)
 {
-	if (g_hRespawnTimer[iClient] != INVALID_HANDLE)
+	if (IsValidClient(iClient))
 	{
-		KillTimer(g_hRespawnTimer[iClient]);
-		g_hRespawnTimer[iClient] = INVALID_HANDLE;
+		if (g_hRespawnTimer[iClient] != null)
+			delete g_hRespawnTimer[iClient];
+			
+		if (g_hRespawnHud_Timer[iClient] != null)
+			delete g_hRespawnHud_Timer[iClient];
+			
+		g_iRemaining[iClient] = 0;
 	}
-	
-	if (g_hRespawnHud_Timer[iClient] != INVALID_HANDLE)
-	{
-		KillTimer(g_hRespawnHud_Timer[iClient]);
-		g_hRespawnHud_Timer[iClient] = INVALID_HANDLE;
-	}
-	
-	g_iRemaining[iClient] = 0;
 }
 
 stock bool IsValidClient(int iClient, bool bReplay = true)

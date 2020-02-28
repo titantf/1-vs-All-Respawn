@@ -303,14 +303,17 @@ public Action Timer_Respawn(Handle hTimer, int iClient)
 
 public Action Event_RoundStart(Handle hEvent, char[] sEventName, bool bDontBroadcast)
 {
-	g_iStartingPlayers = GetPlayersCount(2);
-	g_bRoundStarted = true;
-	
-	if (GetRespawnTime() / 60 > 0)
-		CPrintToChatAll("%s Players will respawn after %d minutes %d seconds upon death this round.", g_sTag, GetRespawnTime() / 60, GetRespawnTime() % 60);
-	else
-		CPrintToChatAll("%s Players will respawn after %d seconds upon death this round.", g_sTag, GetRespawnTime() % 60);
+	if (GetPlayersCount(2) > 1)
+	{
+		g_iStartingPlayers = GetPlayersCount(2);
+		g_bRoundStarted = true;
 		
+		if (GetRespawnTime() / 60 > 0)
+			CPrintToChatAll("%s Players will respawn after %d minutes %d seconds upon death this round.", g_sTag, GetRespawnTime() / 60, GetRespawnTime() % 60);
+		else
+			CPrintToChatAll("%s Players will respawn after %d seconds upon death this round.", g_sTag, GetRespawnTime() % 60);
+	}
+	
 	for (int iClient = 1; iClient <= MaxClients; iClient++)
 		if (IsValidClient(iClient))
 			Client_ClearTimers(iClient);

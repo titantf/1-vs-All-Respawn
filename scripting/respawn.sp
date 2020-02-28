@@ -193,7 +193,7 @@ public Action Timer_RespawnHUD(Handle hTimer, int iClient)
 		if (GetRespawnTime() / 60 > 0)
 			ShowSyncHudText(iClient, g_hRespawnHUD, "You will respawn in %d minutes %d seconds.", GetRespawnTime() / 60, GetRespawnTime() % 60);
 		else
-			ShowSyncHudText(iClient, g_hRespawnHUD, "You will respawn in %d seconds.", GetRespawnTime() / 60, GetRespawnTime() % 60);
+			ShowSyncHudText(iClient, g_hRespawnHUD, "You will respawn in %d seconds.", GetRespawnTime() % 60);
 	}
 	
 	else if (g_iRemaining[iClient] <= 0)

@@ -303,9 +303,9 @@ public Action Timer_Respawn(Handle hTimer, int iClient)
 
 public Action Event_RoundStart(Handle hEvent, char[] sEventName, bool bDontBroadcast)
 {
-	if (GetPlayersCount(2) > 1)
+	if (GetAlivePlayersCount(2) > 1)
 	{
-		g_iStartingPlayers = GetPlayersCount(2);
+		g_iStartingPlayers = GetAlivePlayersCount(2);
 		g_bRoundStarted = true;
 		
 		if (GetRespawnTime() / 60 > 0)
@@ -327,11 +327,11 @@ public Action Event_RoundEnd(Handle hEvent, char[] sEventName, bool bDontBroadca
 			Client_ClearTimers(iClient);
 }
 
-stock int GetPlayersCount(int iTeam) 
+stock int GetAlivePlayersCount(int iTeam) 
 {
 	int iCount = 0;
 	for (int i = 1; i <= MaxClients; i++) 
-		if (IsValidClient(i) && GetClientTeam(i) == iTeam)
+		if (IsValidClient(i) && IsPlayerAlive(i) && GetClientTeam(i) == iTeam)
 			iCount++; 
 	
 	return iCount; 
